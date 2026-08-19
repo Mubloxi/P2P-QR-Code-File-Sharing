@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Optical P2P</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body { background-color: #000000; color: #ffffff; font-family: 'Courier New', Courier, monospace; }
+    .border-white { border-color: #ffffff; }
+    .scan-line { animation: scan 2s infinite linear; }
+    @keyframes scan { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+    #qrCanvas { image-rendering: pixelated; width: 100%; height: auto; max-width: 400px; }
+    .reticle { border: 2px solid rgba(255, 255, 255, 0.7); box-shadow: 0 0 0 100vmax rgba(0,0,0,0.6); }
+    
+    /* Monochrome Slider */
+    input[type="range"] { -webkit-appearance: none; appearance: none; background: #333; height: 4px; border-radius: 2px; direction: rtl; /* Flips slider so right = faster */ }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; cursor: pointer; }
+    input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border: none; border-radius: 50%; background: #fff; cursor: pointer; }
+  </style>
+</head>
+<body class="overflow-x-hidden">
+  <div id="app" class="flex flex-col items-center min-h-screen p-4">
+    
+    <h1 class="text-2xl font-bold mb-6 tracking-widest">OPTICAL P2P</h1>
+    
+    <!-- Mode Switcher -->
+    <div class="flex gap-4 mb-8">
+      <button @click="mode = 'send'" :class="mode === 'send' ? 'bg-white text-black' : 'bg-transparent text-white border border-gray-600'" class="px-6 py-2 transition-all">SEND</button>
+      <button @click="mode = 'receive'" :class="mode === 'receive' ? 'bg-white text-black' : 'bg-transparent text-white border border-gray-600'" class="px-6 py-2 transition-all">RECEIVE</button>
+    </div>
+
+    <!-- SENDER MODE -->
+    <div v-if="mode === 'send'" class="w-full max-w-md flex flex-col items-center">
+      <div class="text-xs mb-2 text-gray-400 text-center h-4">{{ status_text }}</div>
+      
+      <input type="file" id="file_input" @change="prepare_file" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-white file:text-black hover:file:bg-gray-300 mb-4"/>
+      
+      <div class="relative w-full max-w-md aspect-square bg-black border border-gray-700 flex items-center justify-center overflow-hidden">
+        <canvas id="qrCanvas"></canvas>
+        <div v-if="is_transferring" class="absolute w-full h-1 bg-white scan-line"></div>
+        <div v-if="!is_transferring" class="text-gray-600 text-sm">AWAITING FILE</div>
+      </div>
+
+      <!-- SPEED SLIDER -->
+      <div class="w-full mt-6 mb-4">
+        <div class="flex justify-between text-xs mb-2 text-gray-400">
+          <span>BROADCAST SPEED</span>
+          <span class="font-bold text-white">{{ Math.round(1000 / frame_delay) }} FPS</span>
+        </div>
+        <input 
+          type="range" 
+          min="33" 
+          max="500" 
+          step="10" 
+          v-model.number="frame_delay" 
+          class="w-full cursor-pointer"
+        />
+        <div class="flex justify-between text-[10px] text-gray-500 mt-1">
+          <span>← SLOWER (Potato)</span>
+          <span>FASTER (Beast) →</span>
+        </div>
+      </div>
+
+      <div class="w-full mt-2">
+        <div class="flex justify-between text-xs mb-1 text-gray-400">
+          <span>BROADCAST PROGRESS</span>
+          <span class="text-white">{{ send_progress }}%</span>
+        </div>
+        <div class="w-full bg-gray-800 h-2 rounded">
+          <div class="bg-white h-2 rounded transition-all" :style="{ width: send_progress + '%' }"></div>
+        </div>
+      </div>
+
+      <button v-if="!is_transferring && file_ready" @click="start_transfer" class="mt-6 p-2 w-full border border-white text-white hover:bg-white hover:text-black transition-all">
+        START BROADCAST
+      </button>
+      <button v-if="is_transferring" @click="stop_transfer" class="mt-6 p-2 w-full border border-red-500 text-red-500 hover:bg-red-500 hover:text-black transition-all">
+        STOP BROADCAST
+      </button>
+    </div>
+
+    <!-- RECEIVER MODE -->
+    <div v-if="mode === 'receive'" class="w-full max-w-md flex flex-col items-center">
+      <div class="text-xs mb-2 text-gray-400 text-center h-4">{{ status_text }}</div>
+      
+      <div class="relative w-full max-w-md aspect-square bg-black border border-gray-700 flex items-center justify-center overflow-hidden">
+        <video id="videoElement" class="absolute inset-0 w-full h-full object-cover" muted autoplay playsinline></video>
+        
+        <div v-if="is_receiving" class="absolute w-3/4 h-3/4 reticle pointer-events-none flex items-center justify-center">
+           <div class="text-white text-xs text-center bg-black/50 px-2 py-1 mt-auto mb-2">Align inside box</div>
+        </div>
+
+        <div v-if="is_receiving" class="absolute w-full h-1 bg-white scan-line"></div>
+      </div>
+
+      <div class="w-full mt-4">
+        <div class="flex justify-between text-xs mb-1 text-gray-400">
+          <span>PACKETS RECEIVED</span>
+          <span class="text-white">{{ received_count }} / {{ total_chunks || '?' }}</span>
+        </div>
+        <div class="w-full bg-gray-800 h-2 rounded">
+          <div class="bg-white h-2 rounded transition-all" :style="{ width: recv_progress + '%' }"></div>
+        </div>
+      </div>
+
+      <button v-if="!is_receiving" @click="start_receiver" class="mt-6 p-2 w-full border border-white text-white hover:bg-white hover:text-black transition-all">
+        ACTIVATE CAMERA
+      </button>
+      <button v-if="is_receiving" @click="stop_receiver" class="mt-6 p-2 w-full border border-red-500 text-red-500 hover:bg-red-500 hover:text-black transition-all">
+        STOP RECEIVER
+      </button>
+    </div>
+
+    <!-- FOOTER CREDITS -->
+    <div class="mt-12 text-center text-xs text-gray-500 space-y-2 pb-8">
+      <p>Made by <a href="https://github.com/Mubloxi" target="_blank" class="text-white underline underline-offset-2 hover:text-gray-400">mu_bloxi</a> with ❤️</p>
+      <a href="https://github.com/Mubloxi/P2P-QR-Code-File-Sharing" target="_blank" class="inline-block mt-2 px-3 py-1 border border-gray-600 hover:bg-white hover:text-black transition-all">
+        ⭐ Star the Repo
+      </a>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.9.15/dist/index.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.0.3/pako.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  
+  <script>
+    const { createApp, ref } = Vue;
+
+    createApp({
+      setup() {
+        const mode = ref('send');
+        const status_text = ref('Select a file to begin.');
+        const is_transferring = ref(false);
+        const is_receiving = ref(false);
+        const file_ready = ref(false);
+        const send_progress = ref(0);
+        const recv_progress = ref(0);
+        const received_count = ref(0);
+        const total_chunks = ref(0);
+        
+        const frame_delay = ref(120); 
+        let broadcast_timeout = null;
+
+        let file_data_chunks = [];
+        let file_metadata = {};
+        let scan_active = false;
+        let video_element, scan_canvas, scan_ctx;
+
+        const CHUNK_SIZE = 120; 
+
+        // --- SENDER LOGIC ---
+        const prepare_file = async (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+          
+          status_text.value = `Compressing ${file.name}...`;
+          const array_buffer = await file.arrayBuffer();
+          const compressed_data = pako.gzip(new Uint8Array(array_buffer), { level: 9 });
+          
+          const num_chunks = Math.ceil(compressed_data.length / CHUNK_SIZE);
+          
+          file_metadata = { name: file.name, chunks: num_chunks };
+          file_data_chunks = [];
+
+          for (let i = 0; i < num_chunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const chunk = compressed_data.subarray(start, start + CHUNK_SIZE);
+            let b64 = btoa(String.fromCharCode.apply(null, chunk));
+            file_data_chunks.push(`${i}|${num_chunks}|${b64}`);
+          }
+
+          file_ready.value = true;
+          status_text.value = `Ready: ${file.name} (${num_chunks} frames)`;
+          
+          const canvas = document.getElementById('qrCanvas');
+          QRCode.toCanvas(canvas, `META|${file.name}|${num_chunks}`, { width: 400, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+        };
+
+        const start_transfer = () => {
+          is_transferring.value = true;
+          status_text.value = 'Broadcasting...';
+          let data_idx = 0;
+          let frame_count = 0;
+          const canvas = document.getElementById('qrCanvas');
+
+          const broadcast_next_frame = () => {
+            if (!is_transferring.value) return;
+
+            // Send Metadata every 15 frames WITHOUT overwriting actual data chunks
+            if (frame_count % 15 === 0) {
+              QRCode.toCanvas(canvas, `META|${file_metadata.name}|${file_metadata.chunks}`, { width: 400, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+            } else {
+              // Send actual data chunk
+              QRCode.toCanvas(canvas, file_data_chunks[data_idx], { width: 400, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+              send_progress.value = Math.round(((data_idx + 1) / file_data_chunks.length) * 100);
+              data_idx = (data_idx + 1) % file_data_chunks.length;
+            }
+            
+            frame_count++;
+            broadcast_timeout = setTimeout(broadcast_next_frame, frame_delay.value);
+          };
+
+          broadcast_next_frame();
+        };
+
+        const stop_transfer = () => {
+          clearTimeout(broadcast_timeout);
+          is_transferring.value = false;
+          send_progress.value = 0;
+          status_text.value = 'Broadcast stopped.';
+        };
+
+        // --- RECEIVER LOGIC ---
+        const decoded_chunks = ref({});
+
+        const start_receiver = async () => {
+          is_receiving.value = true;
+          status_text.value = 'Initializing camera...';
+          decoded_chunks.value = {};
+          received_count.value = 0;
+          total_chunks.value = 0;
+          recv_progress.value = 0;
+
+          video_element = document.getElementById('videoElement');
+          scan_canvas = document.createElement('canvas');
+          scan_ctx = scan_canvas.getContext('2d', { willReadFrequently: true });
+
+          try {
+            video_element.srcObject = await navigator.mediaDevices.getUserMedia({ 
+              video: { 
+                facingMode: "environment",
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                focusMode: "continuous"
+              } 
+            });
+            await video_element.play();
+            status_text.value = 'Scanning... Hold steady.';
+            scan_active = true;
+            scan_loop();
+          } catch (err) {
+            status_text.value = 'Camera access denied. Check browser permissions.';
+            is_receiving.value = false;
+          }
+        };
+
+        const scan_loop = async () => {
+          if (!scan_active) return;
+
+          if (video_element.readyState === video_element.HAVE_ENOUGH_DATA) {
+            scan_canvas.width = 320;
+            scan_canvas.height = 320;
+            scan_ctx.drawImage(video_element, 0, 0, 320, 320);
+            
+            const image_data = scan_ctx.getImageData(0, 0, 320, 320);
+            
+            try {
+              const symbols = await zbarWasm.scanImageData(image_data);
+              if (symbols && symbols.length > 0) {
+                process_data(symbols[0].decode());
+              }
+            } catch (e) { /* Ignore scan errors */ }
+          }
+          
+          await new Promise(r => setTimeout(r, 0));
+          requestAnimationFrame(scan_loop);
+        };
+
+        const process_data = (data_string) => {
+          const parts = data_string.split('|');
+          
+          if (parts[0] === 'META') {
+            if (total_chunks.value === 0) {
+              total_chunks.value = parseInt(parts[2]);
+              status_text.value = `Receiving: ${parts[1]}`;
+            }
+            return;
+          }
+
+          if (parts.length === 3 && total_chunks.value > 0) {
+            const idx = parseInt(parts[0]);
+            
+            if (!decoded_chunks.value[idx]) {
+              const b64_data = parts[2];
+              const binary_string = atob(b64_data);
+              const bytes = new Uint8Array(binary_string.length);
+              for (let i = 0; i < binary_string.length; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+              }
+              
+              decoded_chunks.value[idx] = bytes;
+              received_count.value++;
+              recv_progress.value = Math.round((received_count.value / total_chunks.value) * 100);
+
+              if (received_count.value === total_chunks.value) {
+                reassemble_file();
+              }
+            }
+          }
+        };
+
+        const reassemble_file = () => {
+          status_text.value = 'Reassembling file...';
+          stop_receiver();
+
+          let total_length = 0;
+          for (let i = 0; i < total_chunks.value; i++) {
+            total_length += decoded_chunks.value[i].length;
+          }
+          
+          let assembled = new Uint8Array(total_length);
+          let offset = 0;
+          for (let i = 0; i < total_chunks.value; i++) {
+            assembled.set(decoded_chunks.value[i], offset);
+            offset += decoded_chunks.value[i].length;
+          }
+
+          try {
+            let inflated_data = pako.inflate(assembled);
+            const blob = new Blob([inflated_data]);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = status_text.value.replace('Receiving: ', '');
+            a.click();
+            URL.revokeObjectURL(url);
+            status_text.value = 'File downloaded successfully!';
+          } catch (e) {
+            status_text.value = 'Decompression error: File corrupted.';
+          }
+        };
+
+        const stop_receiver = () => {
+          scan_active = false;
+          is_receiving.value = false;
+          if (video_element && video_element.srcObject) {
+            video_element.srcObject.getTracks().forEach(track => track.stop());
+          }
+        };
+
+        return {
+          mode, status_text, is_transferring, is_receiving, file_ready,
+          send_progress, recv_progress, received_count, total_chunks,
+          prepare_file, start_transfer, stop_transfer,
+          start_receiver, stop_receiver, frame_delay
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
