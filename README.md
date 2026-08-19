@@ -2,143 +2,383 @@
 
 > Transfer files between devices using nothing but a screen and a camera.
 
-**Optical P2P** is a browser-based, serverless file-sharing system that transfers files through animated QR codes. One device broadcasts the file as a sequence of QR frames, while another device uses its camera to scan and reconstruct the file.
+**Optical P2P** is a browser-based, serverless-at-the-application-level file-sharing system that transfers files through animated QR codes. One device broadcasts the file as a sequence of QR frames, while another device uses its camera to scan and reconstruct the file.
 
 No accounts.
-No uploads.
-No backend.
-No network connection required between the devices.
+No file uploads.
+No database.
+No external transfer service.
+
+The included Node.js server simply hosts the application on **port 3005**.
 
 ## Tech Stack
 
-* **HTML5** — Application structure
-* **CSS / Tailwind CSS** — UI and styling
-* **JavaScript** — Core application logic
-* **Vue 3** — Reactive UI and state management
+* **Node.js** — Local web server
+* **JavaScript** — Application logic
+* **Vue 3** — Reactive UI
+* **Tailwind CSS** — Styling
 * **QRCode.js** — QR code generation
-* **ZBar WASM** — QR code scanning and decoding
-* **Pako** — GZIP compression and decompression
-* **Web Camera API** — Camera access and video capture
-* **Canvas API** — QR rendering and camera frame processing
-
-## How It Works
-
-Optical P2P converts a file into compressed chunks and broadcasts those chunks as QR codes.
-
-```text
-          SENDER                              RECEIVER
-             │                                    │
-             │ Select File                        │
-             ▼                                    │
-        GZIP Compression                          │
-             │                                    │
-             ▼                                    │
-        Split into Chunks                         │
-             │                                    │
-             ▼                                    │
-       Generate QR Frames                         │
-             │                                    │
-             │     Screen → Camera                │
-             ├───────────────────────────────────►│
-             │                                    │
-             │                              Scan QR Frames
-             │                                    │
-             │                              Decode Chunks
-             │                                    │
-             │                              Reassemble File
-             │                                    │
-             │                              Decompress
-             │                                    │
-             │                              Download File
-```
-
-Each QR frame contains either:
-
-* **Metadata** — filename and total number of chunks
-* **File data** — chunk index, total chunks, and Base64 encoded data
-
-Metadata is periodically rebroadcast during transmission so the receiver can recover even if it starts scanning after the initial frame.
+* **ZBar WASM** — QR code scanning
+* **Pako** — GZIP compression/decompression
+* **Web Camera API** — Camera access
+* **Canvas API** — QR rendering and camera processing
+* **HTML5** — Application structure
 
 ## Features
 
-### File Transfer
-
-* Transfer files directly between devices
-* No server or database required
-* Works entirely inside the browser
-* Automatic file compression using GZIP
-* Chunk-based transmission
-
-### QR Broadcasting
-
-* Animated QR-code transmission
-* Adjustable broadcast speed
-* Configurable frame delay
-* Automatic metadata rebroadcasting
+* Transfer files between devices using QR codes
+* No cloud storage or file upload service
+* Local file compression with GZIP
+* Automatic file chunking
+* Adjustable QR broadcast speed
 * Real-time transfer progress
+* Camera-based QR scanning
+* Automatic packet reconstruction
+* Automatic file download after transfer
+* Metadata retransmission for improved reliability
+* Responsive mobile-friendly interface
+* Lightweight Node.js server
+* Runs locally on port **3005**
 
-### Camera Receiver
+## How It Works
 
-* Uses the device camera to scan QR frames
-* Rear-camera preference on mobile devices
-* Real-time scanning with ZBar WebAssembly
-* Duplicate chunk protection
-* Automatic file reconstruction
+The sender compresses the selected file, splits it into small chunks, and converts each chunk into a QR code.
 
-### User Interface
-
-* Minimal monochrome interface
-* Sender / Receiver mode switching
-* Live transmission status
-* Broadcast progress
-* Packet reception progress
-* Camera scanning reticle
-* Responsive layout
-
-## Speed Control
-
-The sender includes an adjustable broadcast-speed slider.
-
-The transmission speed controls how quickly QR frames change:
+The receiving device uses its camera to scan the QR codes and rebuild the original file.
 
 ```text
-Slower  ◄────────────────────────►  Faster
-
-More reliable                         Faster
-Better for cameras                    Requires better focus
+SENDER
+  │
+  ├── Select File
+  │
+  ├── GZIP Compress
+  │
+  ├── Split Into Chunks
+  │
+  ├── Convert Chunks → QR Codes
+  │
+  └──────── Screen ────────┐
+                           │
+                           ▼
+                        Camera
+                           │
+                           ▼
+RECEIVER               Scan QR
+  │                        │
+  ├── Decode QR ◄──────────┘
+  │
+  ├── Collect Chunks
+  │
+  ├── Reassemble
+  │
+  ├── GZIP Decompress
+  │
+  └── Download File
 ```
-
-Faster speeds can improve transfer time, but slower speeds may work better with cameras that have difficulty focusing or capturing rapidly changing QR codes.
 
 ## Requirements
 
-A modern browser with support for:
+Before running the project, install:
 
-* JavaScript
-* WebAssembly
-* Canvas API
-* `navigator.mediaDevices.getUserMedia()`
-* Camera access for receiving files
+* **Node.js 18+**
+* **npm** — included with Node.js
+* A modern web browser
+* A camera on the receiving device
 
-Recommended browsers:
-
-* Chrome
-* Edge
-* Firefox
-* Safari
-
-For camera access, browsers generally require the page to be served from **HTTPS** or `localhost`.
-
-## Running Locally
-
-Because the project is completely client-side, you don't need Node.js, Python, a database, or a backend.
-
-You can simply serve the directory with any static HTTP server.
-
-### Python
+### Check Node.js
 
 ```bash
-python -m http.server 3005
+node --version
+```
+
+You should see something similar to:
+
+```text
+v18.x.x
+```
+
+or newer.
+
+Check npm:
+
+```bash
+npm --version
+```
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/Mubloxi/P2P-QR-Code-File-Sharing.git
+```
+
+Enter the project directory:
+
+```bash
+cd P2P-QR-Code-File-Sharing
+```
+
+Install the required Node.js dependencies:
+
+```bash
+npm install
+```
+
+If you're setting the project up from scratch, the server requires:
+
+```bash
+npm install express
+```
+
+The browser-side libraries are loaded directly by `index.html`, including:
+
+* Vue 3
+* Tailwind CSS
+* QRCode.js
+* Pako
+* ZBar WASM
+
+These do **not** need to be separately installed with npm when using the current version of the project.
+
+## Running the Server
+
+Start the server with:
+
+```bash
+node server.js
+```
+
+The application will run on:
+
+```text
+http://localhost:3005
+```
+
+Open that address in your browser.
+
+### Development
+
+Run:
+
+```bash
+node server.js
+```
+
+Then visit:
+
+```text
+http://localhost:3005
+```
+
+Stop the server with:
+
+```text
+CTRL + C
+```
+
+## Using Another Device
+
+If you want to transfer files between two devices on the same Wi-Fi network, run the server on one device and access it from the other.
+
+Find the host machine's local IP address.
+
+### Windows
+
+```powershell
+ipconfig
+```
+
+Look for the IPv4 address, for example:
+
+```text
+192.168.1.50
+```
+
+Then open on the other device:
+
+```text
+http://192.168.1.50:3005
+```
+
+For example:
+
+```text
+Sender:
+http://192.168.1.50:3005
+
+Receiver:
+http://192.168.1.50:3005
+```
+
+The sender displays the QR frames on its screen while the receiver points its camera at them.
+
+> **Note:** Camera access may be restricted when using a plain HTTP LAN address. For the most reliable camera permissions, use `localhost` or serve the application through HTTPS.
+
+## Project Structure
+
+```text
+P2P-QR-Code-File-Sharing/
+│
+├── index.html
+├── server.js
+├── package.json
+├── package-lock.json
+└── README.md
+```
+
+## Server
+
+The included `server.js` provides the local HTTP server for the application.
+
+The default port is:
+
+```text
+3005
+```
+
+Start it with:
+
+```bash
+node server.js
+```
+
+The server does **not** process or store transferred files. File processing and QR transmission happen inside the browser.
+
+## Dependencies
+
+### Server-side
+
+```text
+Node.js
+Express
+```
+
+Install Express with:
+
+```bash
+npm install express
+```
+
+### Client-side
+
+The frontend currently loads these libraries through CDN:
+
+```text
+Vue 3
+Tailwind CSS
+QRCode.js
+Pako
+ZBar WASM
+```
+
+They are loaded automatically when the page opens.
+
+## Sender
+
+1. Open the application.
+2. Select **SEND**.
+3. Choose a file.
+4. The file is compressed locally.
+5. The file is split into QR-sized chunks.
+6. Choose a broadcast speed.
+7. Click **START BROADCAST**.
+8. Display the QR code to the receiving device.
+
+The sender continuously cycles through the chunks so that missed frames can be captured later.
+
+## Receiver
+
+1. Open the application.
+2. Select **RECEIVE**.
+3. Click **ACTIVATE CAMERA**.
+4. Allow camera access.
+5. Point the camera at the sender's QR code.
+6. Keep the QR code inside the scanning area.
+7. Wait for all packets to be received.
+8. The original file is reconstructed and downloaded automatically.
+
+## Broadcast Speed
+
+The sender provides an adjustable broadcast speed.
+
+```text
+SLOWER ◄────────────────────────► FASTER
+       Potato                  Beast
+```
+
+Higher speeds can make transfers faster, but the receiving camera may have a harder time capturing rapidly changing QR codes.
+
+If packets aren't being detected reliably, try lowering the broadcast speed.
+
+## Privacy
+
+The project is designed to keep file processing inside the browser.
+
+Files are:
+
+* Read locally
+* Compressed locally
+* Chunked locally
+* Converted into QR codes locally
+* Displayed locally
+* Scanned locally
+* Reassembled locally
+* Downloaded locally
+
+The Node.js server is only responsible for serving the web application.
+
+## Security
+
+The current implementation does **not encrypt file contents**.
+
+QR data can potentially be captured by anyone who can see the transmitting screen.
+
+Do not use the current implementation for highly sensitive information without adding encryption.
+
+## Limitations
+
+Optical transfer is fundamentally slower than traditional network-based file transfer.
+
+Performance depends on:
+
+* Screen resolution
+* Camera quality
+* Camera focus
+* Lighting
+* Distance between devices
+* QR-code size
+* Broadcast speed
+* File size
+
+Large files can require a significant number of QR frames.
+
+## Roadmap
+
+* [ ] End-to-end encryption
+* [ ] Automatic speed optimization
+* [ ] Improved error correction
+* [ ] Transfer pause/resume
+* [ ] Drag-and-drop uploads
+* [ ] Multiple-file transfers
+* [ ] Folder transfers
+* [ ] Better mobile camera handling
+* [ ] Transfer statistics
+* [ ] PWA/offline support
+* [ ] Optional WebRTC transfer mode
+* [ ] More efficient QR encoding
+
+## Contributing
+
+Contributions and improvements are welcome.
+
+Clone the repository:
+
+```bash
+git clone https://github.com/Mubloxi/P2P-QR-Code-File-Sharing.git
+cd P2P-QR-Code-File-Sharing
+npm install
+node server.js
 ```
 
 Then open:
@@ -147,169 +387,17 @@ Then open:
 http://localhost:3005
 ```
 
-### Node.js
-
-If you have Node.js installed:
-
-```bash
-npx serve .
-```
-
-## Usage
-
-### Sending a File
-
-1. Open Optical P2P on the sending device.
-2. Select **SEND**.
-3. Choose a file.
-4. Wait for the file to be compressed and prepared.
-5. Adjust the broadcast speed if necessary.
-6. Click **START BROADCAST**.
-7. Display the QR code to the receiving device.
-
-### Receiving a File
-
-1. Open Optical P2P on the receiving device.
-2. Select **RECEIVE**.
-3. Click **ACTIVATE CAMERA**.
-4. Allow camera permissions.
-5. Point the camera at the sender's QR code.
-6. Keep the QR code inside the scanning area.
-7. Wait until all packets are received.
-8. The reconstructed file will automatically download.
-
-## Project Structure
-
-```text
-Optical-P2P/
-│
-├── index.html
-└── README.md
-```
-
-The current version is intentionally lightweight and can run as a single HTML file.
-
-## Architecture
-
-Optical P2P does not use a traditional client/server architecture.
-
-```text
-┌──────────────┐
-│    Sender    │
-│              │
-│ File         │
-│     ↓        │
-│ GZIP         │
-│     ↓        │
-│ Chunking     │
-│     ↓        │
-│ QR Generator │
-└──────┬───────┘
-       │
-       │ Optical Transmission
-       │
-       ▼
-┌──────────────┐
-│   Receiver   │
-│              │
-│ Camera       │
-│     ↓        │
-│ ZBar WASM    │
-│     ↓        │
-│ Decode       │
-│     ↓        │
-│ Reassemble   │
-│     ↓        │
-│ GZIP Inflate │
-│     ↓        │
-│ Download     │
-└──────────────┘
-```
-
-This means the actual file data does not need to pass through an internet server.
-
-## Privacy
-
-Optical P2P is designed around local, direct transfer.
-
-Files are:
-
-* Compressed locally
-* Split locally
-* Encoded locally
-* Displayed locally
-* Scanned locally
-* Reassembled locally
-* Downloaded locally
-
-There is no project backend responsible for storing or forwarding your files.
-
-> Your screen and camera act as the communication channel.
-
-## Limitations
-
-Because the transfer happens through QR codes and a camera, performance depends heavily on the devices involved.
-
-Potential limitations include:
-
-* Large files can require many QR frames
-* Very high broadcast speeds may be difficult for cameras to capture
-* Poor lighting can reduce scanning reliability
-* Camera focus affects transfer performance
-* QR codes have limited data capacity per frame
-* Lost frames must be encountered again during the broadcast cycle
-
-The current implementation repeatedly cycles through the file chunks, allowing the receiver to collect missing packets without requiring a network connection.
-
-## Security
-
-Optical P2P does not provide encryption in its current implementation.
-
-The transfer should therefore be considered **unencrypted**.
-
-Anyone who can visually capture the transmitted QR codes could potentially reconstruct the transferred data.
-
-For sensitive files, additional encryption should be implemented before transmission.
-
-## Roadmap
-
-Potential future improvements:
-
-* [ ] End-to-end encryption
-* [ ] Automatic transfer speed optimization
-* [ ] Larger and more efficient QR payloads
-* [ ] Error correction
-* [ ] Transfer pause / resume
-* [ ] Multiple file support
-* [ ] Folder transfers
-* [ ] Transfer statistics
-* [ ] Better mobile camera optimization
-* [ ] Drag-and-drop file selection
-* [ ] PWA support
-* [ ] Offline installation
-* [ ] WebRTC fallback for network-connected devices
-
-## Contributing
-
-Contributions, ideas, and improvements are welcome.
-
-```bash
-git clone https://github.com/Mubloxi/P2P-QR-Code-File-Sharing.git
-cd P2P-QR-Code-File-Sharing
-```
-
-Make your changes, test them in a modern browser, and open a pull request.
-
-## License
-
-Add your preferred license here.
-
 ## Author
 
 Created by **Mu_bloxi**
 
-* GitHub: https://github.com/Mubloxi
-* Project: https://github.com/Mubloxi/P2P-QR-Code-File-Sharing
+GitHub:
+
+https://github.com/Mubloxi
+
+Repository:
+
+https://github.com/Mubloxi/P2P-QR-Code-File-Sharing
 
 ---
 
