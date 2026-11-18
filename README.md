@@ -402,3 +402,5 @@ https://github.com/Mubloxi/P2P-QR-Code-File-Sharing
 ---
 
 **Optical P2P — File transfer through light, without the cloud.**
+
+NOTE: This was a test project mostly done by ai
